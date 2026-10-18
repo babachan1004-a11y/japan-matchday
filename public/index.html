@@ -22,14 +22,25 @@
     </div>
     <p class="updated" id="updated">読み込み中…</p>
     <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="fixtures" aria-selected="true">日程</button>
+      <button role="tab" data-tab="schedule" aria-selected="true">日程</button>
+      <button role="tab" data-tab="fixtures" aria-selected="false">クラブ</button>
       <button role="tab" data-tab="table" aria-selected="false">順位表</button>
       <button role="tab" data-tab="players" aria-selected="false">選手</button>
     </nav>
   </header>
 
   <main>
-    <section id="fixtures" class="panel"></section>
+    <section id="schedule" class="panel">
+      <div class="days" id="days" role="tablist" aria-label="日付"></div>
+      <div class="sched-bar">
+        <button class="filter" id="filter" type="button" aria-pressed="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 6h18M6 12h12M10 18h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+          <span id="filter-label">日本人選手の試合</span>
+        </button>
+      </div>
+      <div class="mcards" id="mcards"></div>
+    </section>
+    <section id="fixtures" class="panel" hidden></section>
     <section id="table" class="panel" hidden></section>
     <section id="players" class="panel" hidden>
       <form id="add-player" class="add-form">

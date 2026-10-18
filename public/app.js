@@ -46,7 +46,91 @@ function savePlayers() {
 }
 const playersByClub = () => players.reduce((m, p) => (m.get(p.club)?.push(p.name) ?? m.set(p.club, [p.name]), m), new Map());
 
-// ---- 日程 ----
+// ---- 日程（日付タブ＋試合カード） ----
+let jpOnly = true;
+try { jpOnly = localStorage.getItem('jpm.filter') !== 'all'; } catch { /* 無視 */ }
+let selectedDay = null;
+let scrolledDay = null;
+const dayKey = (iso) => { const p = fmtParts(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }); return `${p.year}-${p.month}-${p.day}`; };
+const fitName = (key, fallback) => { const c = CLUBS[key]; return c ? (c.ja.length <= 9 ? c.ja : c.short) : fallback; };
+
+function renderSchedule() {
+  const now = Date.now();
+  const byClub = playersByClub();
+  const isJp = (m) => byClub.has(m.home.key) || byClub.has(m.away.key);
+  const groups = new Map();
+  for (const m of data.matches) {
+    if (m.status === 'CANCELLED' || (jpOnly && !isJp(m))) continue;
+    const k = dayKey(m.utcDate);
+    (groups.get(k) ?? groups.set(k, []).get(k)).push(m);
+  }
+  const days = [...groups.keys()];
+  const today = dayKey(new Date(now).toISOString());
+  if (!groups.has(selectedDay)) {
+    const liveDay = days.find((d) => groups.get(d).some((m) => isLive(m, now)));
+    selectedDay = liveDay ?? (groups.has(today) ? today : days.find((d) => d >= today) ?? days.at(-1) ?? null);
+  }
+
+  $('#filter-label').textContent = jpOnly ? '日本人選手の試合' : 'すべての試合';
+  $('#filter').setAttribute('aria-pressed', String(jpOnly));
+
+  $('#days').innerHTML = days.map((d) => {
+    const ms = groups.get(d);
+    const p = fmtParts(ms[0].utcDate, { month: 'numeric', day: 'numeric', weekday: 'short' });
+    const live = ms.some((m) => isLive(m, now));
+    const jp = !jpOnly && ms.some(isJp);
+    return `<button class="day ${d === today ? 'today' : ''}" role="tab" data-day="${d}" aria-selected="${d === selectedDay}">
+      ${live ? '<span class="live-mark">LIVE</span>' : ''}${jp ? '<span class="jp-mark" title="日本人選手の試合あり"></span>' : ''}
+      <span class="dw">${p.weekday}</span><span class="dd">${p.month}/${p.day}</span></button>`;
+  }).join('');
+  if (selectedDay !== scrolledDay) {
+    $(`.day[data-day="${selectedDay}"]`)?.scrollIntoView({ inline: 'center', block: 'nearest' });
+    scrolledDay = selectedDay;
+  }
+
+  const teamRow = (side, m, other) => {
+    const crest = data.crests?.[side.key];
+    const hasScore = (m.status === 'FINISHED' || m.status === 'LIVE') && m.score.home != null;
+    const mine = side === m.home ? m.score.home : m.score.away;
+    const lose = m.status === 'FINISHED' && hasScore && mine < (other === m.home ? m.score.home : m.score.away);
+    const names = byClub.get(side.key);
+    return `<div class="team ${lose ? 'lose' : ''}">
+      ${crest ? `<img class="crest" src="${esc(crest)}" alt="" loading="lazy" width="28" height="28" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'crest-ph'}))">` : '<span class="crest-ph"></span>'}
+      <span class="tname">${esc(fitName(side.key, side.name))}</span>
+      <span class="tscore">${hasScore ? mine : ''}</span>
+      ${names ? `<div class="tchips">${names.map((n) => `<span>${esc(n)}</span>`).join('')}</div>` : ''}
+    </div>`;
+  };
+
+  const ms = groups.get(selectedDay) ?? [];
+  $('#mcards').innerHTML = ms.map((m) => {
+    const live = isLive(m, now);
+    const state = live
+      ? `<span class="tlive">LIVE</span><span>${esc(m.status === 'LIVE' ? m.clock || '試合中' : '更新待ち')}</span>`
+      : `<span>${m.status === 'FINISHED' ? '試合終了' : m.status === 'POSTPONED' ? '延期' : 'キックオフ'}</span>`;
+    return `<article class="mcard ${live ? 'live' : isJp(m) ? '' : 'other'}">
+      <div class="mcard-head">プレミアリーグ${m.matchday ? `｜第${m.matchday}節` : ''}</div>
+      <div class="mcard-body">
+        <div class="tbox"><b>${fmtTime(m.utcDate)}</b>${state}</div>
+        <div class="teams">${teamRow(m.home, m, m.away)}${teamRow(m.away, m, m.home)}</div>
+      </div></article>`;
+  }).join('') || '<p class="sched-empty">表示できる試合がありません</p>';
+}
+
+$('#days').addEventListener('click', (e) => {
+  const b = e.target.closest('.day');
+  if (!b || !data) return;
+  selectedDay = b.dataset.day;
+  renderSchedule();
+});
+$('#filter').addEventListener('click', () => {
+  jpOnly = !jpOnly;
+  scrolledDay = null;
+  try { localStorage.setItem('jpm.filter', jpOnly ? 'jp' : 'all'); } catch { /* 無視 */ }
+  if (data) renderSchedule();
+});
+
+// ---- クラブ別 ----
 function renderFixtures() {
   const now = Date.now();
   const byClub = playersByClub();
@@ -155,7 +239,7 @@ function renderPlayers() {
 
 function renderAll() {
   if (!data) return;
-  renderFixtures(); renderTable(); renderPlayers(); renderUpdated();
+  renderSchedule(); renderFixtures(); renderTable(); renderPlayers(); renderUpdated();
 }
 
 function renderUpdated() {
@@ -178,7 +262,7 @@ async function load() {
     data = await res.json();
     renderAll();
   } catch (e) {
-    if (!data) $('#fixtures').innerHTML = `<p class="error">データを読み込めませんでした（${esc(e.message)}）。時間をおいて再読み込みしてください。</p>`;
+    if (!data) $('#mcards').innerHTML = `<p class="error">データを読み込めませんでした（${esc(e.message)}）。時間をおいて再読み込みしてください。</p>`;
   }
   clearTimeout(timer);
   const anyLive = data?.matches.some((m) => isLive(m, Date.now()));
