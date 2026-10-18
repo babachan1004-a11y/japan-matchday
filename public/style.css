@@ -1,0 +1,160 @@
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f0f1f4;
+  --text: #15171c;
+  --muted: #646a75;
+  --line: #e2e4e9;
+  --accent: #c8102e;          /* 日の丸の赤 */
+  --accent-soft: #fdecef;
+  --live: #d6001c;
+  --win: #1d8a4e;
+  --draw: #7a808b;
+  --loss: #c8331e;
+  --ucl: #2563eb;
+  --rel: #c8331e;
+  --chip-bg: #fff1f3;
+  --chip-text: #a30d26;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101216;
+    --surface: #1a1d23;
+    --surface-2: #23272f;
+    --text: #eceef2;
+    --muted: #9aa1ad;
+    --line: #2d313a;
+    --accent: #ff5a6e;
+    --accent-soft: #3a1d24;
+    --live: #ff4d5e;
+    --win: #3fbf78;
+    --draw: #9aa1ad;
+    --loss: #ff6b55;
+    --ucl: #6b9bff;
+    --rel: #ff6b55;
+    --chip-bg: #3a1d24;
+    --chip-text: #ffb3be;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  font-feature-settings: "palt";
+}
+button, input, select { font: inherit; color: inherit; }
+
+/* ---- ヘッダー ---- */
+.top {
+  position: sticky; top: 0; z-index: 5;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(10px);
+  padding: calc(10px + env(safe-area-inset-top)) 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.top-row { display: flex; align-items: baseline; gap: 8px; }
+h1 { margin: 0; font-size: 18px; letter-spacing: .02em; }
+h1::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-right: 7px; vertical-align: 1px; }
+.season { color: var(--muted); font-size: 12px; }
+.updated { margin: 2px 0 8px; font-size: 12px; color: var(--muted); }
+.updated.stale { color: var(--loss); }
+.tabs { display: flex; gap: 4px; }
+.tabs button {
+  flex: 1; border: 0; background: none; padding: 8px 0 10px; cursor: pointer;
+  color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent;
+}
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+
+main { max-width: 640px; margin: 0 auto; padding: 12px 16px 24px; }
+.panel { display: grid; gap: 12px; }
+.panel[hidden] { display: none; }
+
+/* ---- クラブカード ---- */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.card.is-live { border-color: var(--live); box-shadow: 0 0 0 1px var(--live) inset; }
+.card-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+.card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.card-title h2 { margin: 0; font-size: 17px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank { flex-shrink: 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rank b { color: var(--text); font-size: 15px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { background: var(--chip-bg); color: var(--chip-text); border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 600; }
+
+.matches { list-style: none; margin: 0; padding: 4px 0; }
+.match {
+  display: grid; grid-template-columns: 7.2em 3.1em 1.6em 1fr auto; align-items: center; gap: 6px;
+  padding: 7px 14px; font-variant-numeric: tabular-nums;
+}
+.match + .match { border-top: 1px dashed var(--line); }
+.date { font-size: 14px; }
+.date .dow-sat { color: var(--ucl); }
+.date .dow-sun { color: var(--loss); }
+.time { font-size: 14px; color: var(--muted); }
+.ha { display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 5px; font-size: 11px; font-weight: 700; }
+.ha.H { background: var(--text); color: var(--surface); }
+.ha.A { border: 1.5px solid var(--muted); color: var(--muted); }
+.opp { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opp .jp-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: 4px; vertical-align: 2px; }
+.tag { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+.match.live { background: var(--accent-soft); }
+.live-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--live); font-weight: 800; font-size: 12px; letter-spacing: .05em; }
+.live-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--live); animation: pulse 1.4s infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+.score { font-weight: 800; font-size: 16px; white-space: nowrap; }
+.clock { font-size: 12px; color: var(--live); font-weight: 600; }
+
+.prev { background: var(--surface-2); }
+.prev-label { grid-column: 1 / -1; font-size: 11px; color: var(--muted); margin-bottom: -4px; }
+.res { display: inline-grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 50%; color: #fff; font-size: 12px; font-weight: 700; }
+.res.W { background: var(--win); } .res.D { background: var(--draw); } .res.L { background: var(--loss); }
+.empty { padding: 12px 14px; color: var(--muted); font-size: 14px; }
+
+/* ---- 順位表 ---- */
+.table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+th, td { padding: 7px 4px; text-align: center; }
+th { font-size: 11px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); }
+td.club, th.club { text-align: left; }
+td.pos { width: 2.4em; position: relative; font-weight: 700; }
+td.pts { font-weight: 800; }
+th:last-child, td:last-child { padding-right: 10px; }
+tbody tr + tr td { border-top: 1px solid var(--line); }
+tr.zone-ucl td.pos { box-shadow: inset 4px 0 var(--ucl); }
+tr.zone-rel td.pos { box-shadow: inset 4px 0 var(--rel); }
+tr.jp td { background: var(--accent-soft); }
+.club-name { font-weight: 600; }
+.club-players { display: block; font-size: 11px; color: var(--chip-text); line-height: 1.3; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding: 2px 4px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+/* ---- 選手管理 ---- */
+.add-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.add-form label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
+.add-form input, .add-form select { width: 100%; min-width: 0; padding: 9px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); font-size: 16px; }
+.add-form button { padding: 9px 16px; border-radius: 9px; border: 0; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; }
+.player-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.player-list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.player-list li + li { border-top: 1px solid var(--line); }
+.player-list .pname { font-weight: 700; }
+.player-list .pclub { color: var(--muted); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-list .warn { color: var(--loss); font-size: 11px; }
+.del { border: 1px solid var(--line); background: none; border-radius: 8px; padding: 4px 10px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.ghost { justify-self: start; border: 1px solid var(--line); background: none; border-radius: 9px; padding: 7px 14px; color: var(--muted); cursor: pointer; }
+.note { margin: 0; font-size: 12px; color: var(--muted); }
+
+.foot { text-align: center; font-size: 11px; color: var(--muted); padding: 0 16px calc(20px + env(safe-area-inset-bottom)); }
+.error { background: var(--surface); border: 1px solid var(--loss); color: var(--loss); border-radius: var(--radius); padding: 14px; }
+
+@media (max-width: 380px) {
+  body { font-size: 14px; }
+  .match { grid-template-columns: 6.6em 2.9em 1.5em 1fr auto; gap: 5px; padding: 7px 10px; }
+  .add-form { grid-template-columns: 1fr 1fr; }
+  .add-form button { grid-column: 1 / -1; }
+  th, td { padding: 7px 2px; }
+}

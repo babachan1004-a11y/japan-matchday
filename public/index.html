@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
+  <title>日本人選手マッチデー</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23fff' stroke='%23bbb'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23c8102e'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <h1>日本人選手マッチデー</h1>
+      <span class="season" id="season"></span>
+    </div>
+    <p class="updated" id="updated">読み込み中…</p>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="fixtures" aria-selected="true">日程</button>
+      <button role="tab" data-tab="table" aria-selected="false">順位表</button>
+      <button role="tab" data-tab="players" aria-selected="false">選手</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="fixtures" class="panel"></section>
+    <section id="table" class="panel" hidden></section>
+    <section id="players" class="panel" hidden>
+      <form id="add-player" class="add-form">
+        <label>選手名<input name="name" required maxlength="20" placeholder="例：高井幸大" autocomplete="off"></label>
+        <label>所属クラブ<select name="club" required></select></label>
+        <button type="submit">追加</button>
+      </form>
+      <ul id="player-list" class="player-list"></ul>
+      <button id="reset-players" class="ghost" type="button">初期設定に戻す</button>
+      <p class="note">設定はこの端末のブラウザ内にだけ保存されます。</p>
+    </section>
+  </main>
+
+  <footer class="foot" id="foot"></footer>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
