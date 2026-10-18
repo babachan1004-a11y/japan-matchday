@@ -219,3 +219,5 @@ $('#reset-players').addEventListener('click', () => {
 
 renderPlayers();
 load();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* 非対応環境では通常のページとして動く */ });
