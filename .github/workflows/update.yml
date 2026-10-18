@@ -1,0 +1,55 @@
+name: データ更新とデプロイ
+
+on:
+  schedule:
+    # 時刻は UTC（日本時間 = UTC+9）。GitHub の定期実行は数分〜十数分遅れることがある。
+    - cron: '*/10 11-22 * * 6,0'   # 土日の試合時間帯（日本時間 20:00〜翌7:59）は10分ごと
+    - cron: '*/15 18-22 * * 1-5'   # 平日夜の試合時間帯（日本時間 翌3:00〜7:59）は15分ごと
+    - cron: '7 */3 * * *'          # それ以外も3時間ごと
+  workflow_dispatch:                # Actions 画面から手動実行
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write   # 定期実行の60日自動停止を防ぐための再有効化に使う
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: API からデータ取得
+        run: node scripts/fetch-data.mjs
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      # 公開リポジトリの定期実行は、コミットが60日ないと止まる。毎回有効化し直して止まらないようにする。
+      - name: 定期実行の自動停止を防ぐ
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update.yml/enable"
+        env:
+          GH_TOKEN: ${{ github.token }}
