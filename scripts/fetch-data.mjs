@@ -29,12 +29,13 @@ async function fromFootballData() {
   return {
     source: 'football-data.org',
     season: `${st.season.startDate.slice(0, 4)}-${st.season.endDate.slice(2, 4)}`,
+    crests: Object.fromEntries(table.map((r) => [clubKey(r.team.name), r.team.crest])),
     standings: table.map((r) => ({
       pos: r.position, ...team(r.team.name), played: r.playedGames, won: r.won, draw: r.draw,
       lost: r.lost, gd: r.goalDifference, points: r.points,
     })),
     matches: mt.matches.map((m) => ({
-      id: String(m.id), utcDate: m.utcDate, status: STATUS[m.status] ?? 'SCHEDULED',
+      id: String(m.id), utcDate: m.utcDate, matchday: m.matchday, status: STATUS[m.status] ?? 'SCHEDULED',
       clock: m.status === 'PAUSED' ? 'HT' : (m.minute ? `${m.minute}'` : ''),
       home: team(m.homeTeam.name), away: team(m.awayTeam.name),
       score: { home: m.score.fullTime.home, away: m.score.fullTime.away },
@@ -55,6 +56,7 @@ async function fromEspn() {
       gd: stat(e, 'pointDifferential'), points: stat(e, 'points'), espnId: e.team.id,
     }))
     .sort((a, b) => a.pos - b.pos);
+  const crests = Object.fromEntries(league.standings.entries.map((e) => [clubKey(e.team.displayName), e.team.logos?.[0]?.href]));
 
   const urls = standings.flatMap((s) => [`${site}/teams/${s.espnId}/schedule`, `${site}/teams/${s.espnId}/schedule?fixture=true`]);
   const pages = [];
@@ -78,7 +80,14 @@ async function fromEspn() {
     });
   }
   standings.forEach((s) => delete s.espnId);
-  return { source: 'ESPN', season: league.name.match(/\d{4}-\d{2}/)?.[0] ?? '', standings, matches: [...byId.values()] };
+  // ESPN には節番号がないので、各クラブの何試合目かから求める（両チームの大きい方）
+  const matches = [...byId.values()].sort((a, b) => a.utcDate.localeCompare(b.utcDate));
+  const count = new Map();
+  for (const m of matches) {
+    const n = Math.max(...[m.home.key, m.away.key].map((k) => count.set(k, (count.get(k) ?? 0) + 1).get(k)));
+    if (m.status !== 'POSTPONED') m.matchday = n;
+  }
+  return { source: 'ESPN', season: league.name.match(/\d{4}-\d{2}/)?.[0] ?? '', crests, standings, matches };
 }
 
 let data;
