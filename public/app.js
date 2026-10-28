@@ -1,4 +1,4 @@
-import { CLUBS, DEFAULT_PLAYERS } from './clubs.js';
+import { CLUBS, DEFAULT_PLAYERS, clubKey } from './clubs.js';
 
 const TZ = 'Asia/Tokyo';
 const STORE_KEY = 'jpm.players.v1';
@@ -247,26 +247,91 @@ function renderUpdated() {
   const mins = Math.round(age / 60000);
   const ago = mins < 1 ? 'たった今' : mins < 60 ? `${mins}分前` : `${Math.floor(mins / 60)}時間前`;
   const el = $('#updated');
-  el.textContent = `最終更新 ${fmtDateTimeText(data.updatedAt)}（${ago}）・日本時間`;
-  el.classList.toggle('stale', age > STALE_MS);
+  const live = Date.now() - liveAt < 3 * 60 * 1000 ? `・ライブ速報 ${fmtTime(new Date(liveAt).toISOString())}` : '';
+  el.textContent = `最終更新 ${fmtDateTimeText(data.updatedAt)}（${ago}）${live}・日本時間`;
+  el.classList.toggle('stale', age > STALE_MS && !live);
   $('#season').textContent = data.season ? `${data.season} シーズン` : '';
   $('#foot').textContent = `データ: ${data.source}`;
 }
 
+// ---- ライブ速報 ----
+// data.json は GitHub の定期実行（実際は30分前後おき）でしか新しくならないため、
+// 試合の時間帯だけはブラウザから ESPN のスコアボードを直接読みにいき、状態とスコアを上書きする。
+const ESPN_BOARD = 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard';
+const LIVE_BEFORE_MS = 10 * 60 * 1000;
+const LIVE_AFTER_MS = 150 * 60 * 1000;
+const liveOverrides = new Map();   // 試合ID → { status, clock, score }
+let liveAt = 0;
+
+const inLiveWindow = (m, now) => {
+  const t = Date.parse(m.utcDate);
+  return m.status !== 'FINISHED' && m.status !== 'CANCELLED' && now >= t - LIVE_BEFORE_MS && now <= t + LIVE_AFTER_MS;
+};
+const liveTargets = () => (data ? data.matches.filter((m) => inLiveWindow(m, Date.now())) : []);
+
+function applyOverrides() {
+  for (const m of data.matches) {
+    const o = liveOverrides.get(m.id);
+    if (o && m.status !== 'FINISHED') Object.assign(m, o);
+  }
+}
+
+async function pollLive() {
+  const targets = liveTargets();
+  if (!targets.length) return;
+  const dates = [...new Set(targets.map((m) => m.utcDate.slice(0, 10).replace(/-/g, '')))];
+  try {
+    const events = (await Promise.all(dates.map((d) => fetch(`${ESPN_BOARD}?dates=${d}`, { cache: 'no-store' }).then((r) => r.json()))))
+      .flatMap((b) => b.events ?? []);
+    const byPair = new Map(events.map((ev) => {
+      const c = ev.competitions[0];
+      const side = (h) => c.competitors.find((x) => x.homeAway === h);
+      return [`${clubKey(side('home').team.displayName)}|${clubKey(side('away').team.displayName)}`, { c, side }];
+    }));
+    for (const m of targets) {
+      const hit = byPair.get(`${m.home.key}|${m.away.key}`);
+      if (!hit) continue;
+      const type = hit.c.status.type;
+      if (type.state === 'pre') continue;
+      const num = (x) => (x.score === '' || x.score == null ? null : Number(x.score));
+      const o = {
+        status: type.state === 'in' ? 'LIVE' : 'FINISHED',
+        clock: type.state === 'in' ? (type.name === 'STATUS_HALFTIME' ? 'HT' : hit.c.status.displayClock ?? '') : '',
+        score: { home: num(hit.side('home')), away: num(hit.side('away')) },
+      };
+      liveOverrides.set(m.id, o);
+      Object.assign(m, o);
+    }
+    liveAt = Date.now();
+    renderAll();
+  } catch { /* 取れなければ data.json の内容のまま */ }
+}
+
 // ---- データ読み込みと自動更新 ----
 let timer;
+let loadedAt = 0;
 async function load() {
   try {
     const res = await fetch(`data.json?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(res.status);
     data = await res.json();
+    loadedAt = Date.now();
+    applyOverrides();
     renderAll();
   } catch (e) {
     if (!data) $('#mcards').innerHTML = `<p class="error">データを読み込めませんでした（${esc(e.message)}）。時間をおいて再読み込みしてください。</p>`;
   }
+  await pollLive();
+  schedule();
+}
+
+// 試合の時間帯は1分ごとにライブ速報、data.json は5分ごと。それ以外は10分ごとに data.json だけ読み直す。
+function schedule() {
   clearTimeout(timer);
-  const anyLive = data?.matches.some((m) => isLive(m, Date.now()));
-  timer = setTimeout(load, (anyLive ? 2 : 10) * 60 * 1000);
+  const live = liveTargets().length > 0;
+  timer = setTimeout(async () => {
+    if (live && Date.now() - loadedAt < 5 * 60 * 1000) { await pollLive(); schedule(); } else load();
+  }, (live ? 1 : 10) * 60 * 1000);
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 setInterval(() => data && renderUpdated(), 60 * 1000);
