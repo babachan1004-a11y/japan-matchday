@@ -1,6 +1,6 @@
 // オフラインでも最後に見たデータを表示するための Service Worker。
 // どのファイルもまずネットから取り、取れなければキャッシュを返す（常に最新を優先）。
-const CACHE = 'jpm-v3';
+const CACHE = 'jpm-v4';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'clubs.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -19,7 +19,8 @@ self.addEventListener('fetch', (e) => {
   // data.json は ?t= 付きで毎回違う URL になるので、クエリを外した URL でキャッシュする
   const key = url.pathname.endsWith('/data.json') ? url.pathname : e.request;
   e.respondWith(
-    fetch(e.request)
+    // cache: 'no-cache' で毎回サーバーに更新を確認する（変わっていなければ 304 で軽い）
+    fetch(url.href, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(key, copy)); }
         return res;
