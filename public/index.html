@@ -46,6 +46,7 @@
       <form id="add-player" class="add-form">
         <label>選手名<input name="name" required maxlength="20" placeholder="例：高井幸大" autocomplete="off"></label>
         <label>所属クラブ<select name="club" required></select></label>
+        <label class="wide">英語表記（任意・試合スタッツの照合用）<input name="en" maxlength="40" placeholder="例：Kota Takai" autocomplete="off" lang="en"></label>
         <button type="submit">追加</button>
       </form>
       <ul id="player-list" class="player-list"></ul>
@@ -55,6 +56,14 @@
   </main>
 
   <footer class="foot" id="foot"></footer>
+
+  <dialog id="detail" class="detail" aria-labelledby="detail-title">
+    <div class="detail-bar">
+      <h2 id="detail-title">試合詳細</h2>
+      <button type="button" class="detail-close" id="detail-close" aria-label="閉じる">✕</button>
+    </div>
+    <div class="detail-body" id="detail-body"></div>
+  </dialog>
   <script type="module" src="app.js"></script>
 </body>
 </html>

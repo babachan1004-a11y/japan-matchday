@@ -1,6 +1,6 @@
 // オフラインでも最後に見たデータを表示するための Service Worker。
 // どのファイルもまずネットから取り、取れなければキャッシュを返す（常に最新を優先）。
-const CACHE = 'jpm-v4';
+const CACHE = 'jpm-v5';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'clubs.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

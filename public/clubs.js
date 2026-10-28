@@ -67,13 +67,22 @@ export function clubKey(name) {
 
 // 初期の追いかけ選手（2026-27 シーズン、2026-10-18 時点で確認）
 export const DEFAULT_PLAYERS = [
-  { name: '三笘薫', club: 'brighton' },
-  { name: '遠藤航', club: 'liverpool' },
-  { name: '鎌田大地', club: 'crystalpalace' },
-  { name: '冨安健洋', club: 'crystalpalace' },
-  { name: '田中碧', club: 'leeds' },
-  { name: '鈴木彩艶', club: 'astonvilla' },
-  { name: '守田英正', club: 'hull' },
-  { name: '前田大然', club: 'ipswich' },
-  { name: '坂元達裕', club: 'coventry' },
+  { name: '三笘薫', club: 'brighton', en: 'Kaoru Mitoma' },
+  { name: '遠藤航', club: 'liverpool', en: 'Wataru Endo' },
+  { name: '鎌田大地', club: 'crystalpalace', en: 'Daichi Kamada' },
+  { name: '冨安健洋', club: 'crystalpalace', en: 'Takehiro Tomiyasu' },
+  { name: '田中碧', club: 'leeds', en: 'Ao Tanaka' },
+  { name: '鈴木彩艶', club: 'astonvilla', en: 'Zion Suzuki' },
+  { name: '守田英正', club: 'hull', en: 'Hidemasa Morita' },
+  { name: '前田大然', club: 'ipswich', en: 'Daizen Maeda' },
+  { name: '坂元達裕', club: 'coventry', en: 'Tatsuhiro Sakamoto' },
 ];
+
+// 試合スタッツ（英語表記の出場記録）と照合するための英語名。追加された選手にも使えるよう主な選手を収録。
+export const KNOWN_EN = {
+  ...Object.fromEntries(DEFAULT_PLAYERS.map((p) => [p.name, p.en])),
+  '高井幸大': 'Kota Takai', '菅原由勢': 'Yukinari Sugawara', '橋岡大樹': 'Daiki Hashioka',
+  '久保建英': 'Takefusa Kubo', '南野拓実': 'Takumi Minamino', '伊東純也': 'Junya Ito',
+  '堂安律': 'Ritsu Doan', '板倉滉': 'Ko Itakura', '町田浩樹': 'Koki Machida', '伊藤洋輝': 'Hiroki Ito',
+  '上田綺世': 'Ayase Ueda', '古橋亨梧': 'Kyogo Furuhashi', '旗手怜央': 'Reo Hatate', '松木玖生': 'Kuryu Matsuki',
+};

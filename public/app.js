@@ -1,4 +1,4 @@
-import { CLUBS, DEFAULT_PLAYERS, clubKey } from './clubs.js';
+import { CLUBS, DEFAULT_PLAYERS, KNOWN_EN, clubKey } from './clubs.js';
 
 const TZ = 'Asia/Tokyo';
 const STORE_KEY = 'jpm.players.v1';
@@ -108,7 +108,8 @@ function renderSchedule() {
     const state = live
       ? `<span class="tlive">LIVE</span><span>${esc(m.status === 'LIVE' ? m.clock || '試合中' : '更新待ち')}</span>`
       : `<span>${m.status === 'FINISHED' ? '試合終了' : m.status === 'POSTPONED' ? '延期' : 'キックオフ'}</span>`;
-    return `<article class="mcard ${live ? 'live' : isJp(m) ? '' : 'other'}">
+    const tap = live || m.status === 'FINISHED' ? ` tappable" data-id="${esc(m.id)}" role="button" tabindex="0` : '';
+    return `<article class="mcard ${live ? 'live' : isJp(m) ? '' : 'other'}${tap}">
       <div class="mcard-head">プレミアリーグ${m.matchday ? `｜第${m.matchday}節` : ''}</div>
       <div class="mcard-body">
         <div class="tbox"><b>${fmtTime(m.utcDate)}</b>${state}</div>
@@ -173,7 +174,7 @@ function renderFixtures() {
     const [gf, ga] = home ? [m.score.home, m.score.away] : [m.score.away, m.score.home];
     const r = gf > ga ? ['W', '勝'] : gf < ga ? ['L', '敗'] : ['D', '分'];
     const opp = home ? m.away : m.home;
-    return `<li class="match prev"><span class="prev-label">前の試合</span>
+    return `<li class="match prev tappable" data-id="${esc(m.id)}" role="button" tabindex="0"><span class="prev-label">前の試合</span>
       <span class="date">${fmtDate(m.utcDate)}</span><span class="res ${r[0]}">${r[1]}</span>
       <span class="ha ${home ? 'H' : 'A'}">${home ? 'H' : 'A'}</span>
       <span class="opp">${esc(nameOf(opp, true))}</span><span class="score">${gf} - ${ga}</span></li>`;
@@ -307,6 +308,183 @@ async function pollLive() {
   } catch { /* 取れなければ data.json の内容のまま */ }
 }
 
+// ---- 試合詳細（出場時間・スタッツ） ----
+// ESPN の試合サマリー（キー不要・ブラウザから直接取得可）を、カードをタップしたときに読む。
+const ESPN_SUMMARY = 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary?event=';
+const summaryCache = new Map();   // 試合ID → サマリー（終了した試合のみ保持）
+const plain = (s) => String(s ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const minuteOf = (clock) => parseInt(String(clock ?? ''), 10) || 0;   // "45'+3'" → 45
+
+async function espnEventId(m) {
+  const d = new Date(Date.parse(m.utcDate));
+  for (const off of [0, -1, 1]) {   // ESPN の日付区切りずれに備えて前後の日も見る
+    const day = new Date(d.getTime() + off * 864e5).toISOString().slice(0, 10).replace(/-/g, '');
+    const board = await fetch(`${ESPN_BOARD}?dates=${day}`).then((r) => r.json());
+    const ev = (board.events ?? []).find((e) => {
+      const c = e.competitions[0].competitors;
+      const k = (h) => clubKey(c.find((x) => x.homeAway === h).team.displayName);
+      return k('home') === m.home.key && k('away') === m.away.key;
+    });
+    if (ev) return ev.id;
+  }
+  throw new Error('ESPN に該当する試合が見つかりません');
+}
+
+async function loadSummary(m) {
+  if (summaryCache.has(m.id)) return summaryCache.get(m.id);
+  const s = await fetch(`${ESPN_SUMMARY}${await espnEventId(m)}`, { cache: 'no-store' }).then((r) => r.json());
+  if (m.status === 'FINISHED') summaryCache.set(m.id, s);
+  return s;
+}
+
+// 英語名で出場メンバーから探す（姓名どちらの順でも、アクセント記号の有無も吸収）
+function findAthlete(roster, en) {
+  const parts = plain(en).split(/\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  const nameOf = (r) => plain(r.athlete.displayName);
+  return roster.find((r) => parts.every((p) => nameOf(r).includes(p)))
+    ?? (() => { const hits = roster.filter((r) => nameOf(r).split(/\s+/).includes(parts.at(-1))); return hits.length === 1 ? hits[0] : null; })();
+}
+
+function appearance(r, finished) {
+  const subs = (r.plays ?? []).filter((p) => p.substitution).map((p) => minuteOf(p.clock?.displayValue));
+  const red = (r.plays ?? []).find((p) => p.redCard);
+  const end = red ? minuteOf(red.clock?.displayValue) : 90;
+  if (r.starter) {
+    if (r.subbedOut) return { cls: 'played', text: `先発出場 〜${subs[0]}分に交代（約${subs[0]}分）` };
+    if (red) return { cls: 'played', text: `先発出場 ${end}分に退場（約${end}分）` };
+    return { cls: 'played', text: finished ? 'フル出場（90分）' : '先発出場（出場中）' };
+  }
+  if (r.subbedIn) {
+    const from = subs[0] ?? 0;
+    if (r.subbedOut && subs[1] != null) return { cls: 'played', text: `途中出場 ${from}分〜${subs[1]}分（約${subs[1] - from}分）` };
+    return { cls: 'played', text: `途中出場 ${from}分〜${finished ? `（約${Math.max(end - from, 1)}分）` : '（出場中）'}` };
+  }
+  return { cls: 'bench', text: finished ? 'ベンチ入り・出場なし' : 'ベンチ' };
+}
+
+function playerStats(r) {
+  const st = Object.fromEntries((r.stats ?? []).map((s) => [s.name, Number(s.value ?? s.displayValue) || 0]));
+  const gk = /G|GK|Goalkeeper/.test(r.position?.abbreviation ?? '') || (st.saves ?? 0) > 0 && !st.totalShots;
+  // [表示名, 値, 0でも出すか]。GK はセーブ・失点を主に、フィールド選手はゴール・アシスト・シュートを主に出す
+  const items = [
+    ...(gk ? [['セーブ', st.saves, true], ['失点', st.goalsConceded, true]] : []),
+    ['ゴール', st.totalGoals, !gk], ['アシスト', st.goalAssists, !gk],
+    ['シュート', st.totalShots ? `${st.totalShots}（枠内${st.shotsOnTarget ?? 0}）` : 0, !gk],
+    ['ファウル', st.foulsCommitted], ['被ファウル', st.foulsSuffered], ['オフサイド', st.offsides],
+  ];
+  const cards = `${st.yellowCards ? '<span><i class="card-y"></i><b>' + st.yellowCards + '</b></span>' : ''}${st.redCards ? '<span><i class="card-r"></i><b>' + st.redCards + '</b></span>' : ''}`;
+  return items.filter(([, v, always]) => v != null && (always || v)).map(([k, v]) => `<span>${k}<b>${v}</b></span>`).join('') + cards;
+}
+
+function renderDetail(m, s) {
+  const finished = m.status === 'FINISHED';
+  const comp = s.header?.competitions?.[0];
+  const side = (h) => comp?.competitors?.find((x) => x.homeAway === h);
+  const score = (h) => side(h)?.score ?? (h === 'home' ? m.score.home : m.score.away) ?? '-';
+  const crest = (k) => data.crests?.[k] ? `<img src="${esc(data.crests[k])}" alt="">` : '';
+  const head = `<section class="dsec dscore">
+    <div class="dteam">${crest(m.home.key)}${esc(fitName(m.home.key, m.home.name))}</div>
+    <div class="dnum">${score('home')} - ${score('away')}</div>
+    <div class="dteam">${crest(m.away.key)}${esc(fitName(m.away.key, m.away.name))}</div>
+    <div class="dmeta">${fmtDateTimeText(m.utcDate)}・${m.matchday ? `第${m.matchday}節・` : ''}${finished ? '試合終了' : esc(comp?.status?.type?.shortDetail ?? '試合中')}</div>
+  </section>`;
+
+  // 日本人選手の出場状況とスタッツ
+  const rosterOf = (key) => (s.rosters ?? []).find((r) => clubKey(r.team.displayName) === key)?.roster ?? [];
+  const mine = players.filter((p) => p.club === m.home.key || p.club === m.away.key);
+  const jpIds = new Set();
+  const jpHtml = mine.map((p) => {
+    const en = p.en || KNOWN_EN[p.name];
+    const roster = rosterOf(p.club);
+    let status; let stats = '';
+    if (!en) status = { cls: 'out', text: '英語表記が未登録のため照合できません（選手タブで登録できます）' };
+    else if (!roster.length) status = { cls: 'out', text: '出場メンバーのデータがまだありません' };
+    else {
+      const r = findAthlete(roster, en);
+      if (!r) status = { cls: 'out', text: 'メンバー外' };
+      else {
+        jpIds.add(r.athlete.id);
+        status = appearance(r, finished);
+        if (status.cls === 'played') stats = `<div class="jp-stats">${playerStats(r)}</div>`;
+      }
+    }
+    return `<div class="jpp"><div class="jp-top"><span class="jp-name">${esc(p.name)}</span><span class="jp-club">${esc(clubName(p.club))}</span></div>
+      <div class="jp-status ${status.cls}">${esc(status.text)}</div>${stats}</div>`;
+  }).join('');
+
+  // 得点・交代・警告の流れ
+  const homeName = side('home')?.team?.displayName;
+  const evs = (s.keyEvents ?? []).filter((e) => /goal|card|substitution|penalty---scored/.test(e.type?.type ?? ''));
+  const tl = evs.map((e) => {
+    const t = e.type.type;
+    const who = (e.participants ?? []).map((x) => x.athlete);
+    const jp = who.some((a) => jpIds.has(a?.id));
+    let ico; let txt;
+    if (/goal|penalty---scored/.test(t)) {
+      ico = '⚽';
+      txt = `${esc(who[0]?.displayName ?? '')}${t === 'own-goal' ? '（オウンゴール）' : ''}${who[1] ? `<small>アシスト ${esc(who[1].displayName)}</small>` : ''}`;
+    } else if (/card/.test(t)) {
+      ico = `<i class="${/red/.test(t) ? 'card-r' : 'card-y'}"></i>`;
+      txt = esc(who[0]?.displayName ?? '');
+    } else {
+      ico = '⇄';
+      txt = `IN ${esc(who[0]?.displayName ?? '')}<small>OUT ${esc(who[1]?.displayName ?? '')}</small>`;
+    }
+    const away = e.team?.displayName && e.team.displayName !== homeName;
+    return `<li class="${away ? 'away' : ''} ${jp ? 'jp-ev' : ''}"><span class="tl-min">${esc(e.clock?.displayValue ?? '')}</span><span class="tl-ico">${ico}</span><span class="tl-txt">${txt}</span></li>`;
+  }).join('');
+
+  // チームスタッツ（左：ホーム、右：アウェー）
+  const teamStats = (h) => {
+    const t = (s.boxscore?.teams ?? []).find((x) => x.homeAway === h) ?? (s.boxscore?.teams ?? [])[h === 'home' ? 0 : 1];
+    return Object.fromEntries((t?.statistics ?? []).map((x) => [x.name, Number(x.displayValue)]));
+  };
+  const H = teamStats('home'); const A = teamStats('away');
+  const pct = (v) => (v <= 1 ? Math.round(v * 100) : Math.round(v));
+  const rows = [
+    ['ボール支配率', H.possessionPct, A.possessionPct, (v) => `${Math.round(v)}%`],
+    ['シュート', H.totalShots, A.totalShots], ['枠内シュート', H.shotsOnTarget, A.shotsOnTarget],
+    ['パス成功率', H.passPct, A.passPct, (v) => `${pct(v)}%`], ['パス数', H.totalPasses, A.totalPasses],
+    ['コーナー', H.wonCorners, A.wonCorners], ['ファウル', H.foulsCommitted, A.foulsCommitted],
+    ['オフサイド', H.offsides, A.offsides], ['セーブ', H.saves, A.saves],
+  ].filter(([, a, b]) => Number.isFinite(a) && Number.isFinite(b));
+  const stHtml = rows.map(([label, a, b, f = (v) => v]) => {
+    const sum = a + b || 1;
+    return `<div class="st-row"><span class="l">${f(a)}</span><div class="st-mid">${label}<div class="st-bar"><i style="width:${(a / sum) * 100}%"></i><i style="width:${(b / sum) * 100}%"></i></div></div><span class="r">${f(b)}</span></div>`;
+  }).join('');
+
+  return head
+    + (mine.length ? `<section class="dsec"><h3>日本人選手</h3>${jpHtml}</section>` : '')
+    + (tl ? `<section class="dsec"><h3>試合の流れ</h3><ul class="tl">${tl}</ul></section>` : '')
+    + (stHtml ? `<section class="dsec"><h3>チームスタッツ</h3><div class="st">${stHtml}</div></section>` : '')
+    + '<p class="dnote">データ: ESPN。出場時間は90分を基準にした目安です（アディショナルタイムは含みません）。</p>';
+}
+
+async function openDetail(id) {
+  const m = data?.matches.find((x) => x.id === id);
+  if (!m) return;
+  const dlg = $('#detail');
+  $('#detail-title').textContent = `${nameOf(m.home, true)} vs ${nameOf(m.away, true)}`;
+  $('#detail-body').innerHTML = '<p class="dnote">読み込み中…</p>';
+  if (!dlg.open) { dlg.showModal(); history.pushState({ detail: id }, ''); }
+  try {
+    $('#detail-body').innerHTML = renderDetail(m, await loadSummary(m));
+  } catch (e) {
+    $('#detail-body').innerHTML = `<p class="error">試合データを読み込めませんでした（${esc(e.message)}）</p>`;
+  }
+}
+const closeDetail = () => { if ($('#detail').open) history.back(); };
+window.addEventListener('popstate', () => { if ($('#detail').open) $('#detail').close(); });
+$('#detail-close').addEventListener('click', closeDetail);
+$('#detail').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDetail(); });   // 背景タップで閉じる
+$('#detail').addEventListener('cancel', (e) => { e.preventDefault(); closeDetail(); });
+document.addEventListener('click', (e) => { const t = e.target.closest('.tappable[data-id]'); if (t) openDetail(t.dataset.id); });
+document.addEventListener('keydown', (e) => {
+  const t = e.target.closest?.('.tappable[data-id]');
+  if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDetail(t.dataset.id); }
+});
+
 // ---- データ読み込みと自動更新 ----
 let timer;
 let loadedAt = 0;
@@ -351,7 +529,8 @@ $('#add-player').addEventListener('submit', (e) => {
   const f = new FormData(e.target);
   const name = String(f.get('name')).trim();
   if (!name) return;
-  players.push({ name, club: String(f.get('club')) });
+  const en = String(f.get('en') ?? '').trim();
+  players.push({ name, club: String(f.get('club')), ...(en ? { en } : {}) });
   savePlayers(); e.target.reset(); renderAll(); if (!data) renderPlayers();
 });
 $('#player-list').addEventListener('click', (e) => {
